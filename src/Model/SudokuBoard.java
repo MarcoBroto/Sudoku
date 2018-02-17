@@ -4,10 +4,10 @@
 
 package Model;
 
-import Homework.HW_1.JavaClient;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
+import External.JavaClient;
 
 import java.util.InputMismatchException;
 
