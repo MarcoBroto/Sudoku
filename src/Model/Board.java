@@ -22,4 +22,8 @@ public class Board {
 		this.cells = new int[size][size];
 		this.height = this.width = size;
 	}
+
+	public int getCell(int row, int col) {
+		return this.cells[row][col];
+	}
 }
