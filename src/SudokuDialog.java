@@ -1,21 +1,12 @@
-package Views;
 
-import sample.BoardPanel;
-import java.awt.BorderLayout;
-import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.GridLayout;
-import java.awt.Insets;
+
+import java.awt.*;
+import java.awt.event.WindowEvent;
+import java.awt.image.BufferedImage;
 import java.net.URL;
-import javax.swing.BorderFactory;
-import javax.swing.BoxLayout;
-import javax.swing.ImageIcon;
-import javax.swing.JButton;
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.border.Border;
-
+import java.util.InputMismatchException;
+import javax.imageio.ImageIO;
+import javax.swing.*;
 import Model.*;
 
 
@@ -34,13 +25,8 @@ public class SudokuDialog extends JFrame {
 
     private final static String IMAGE_DIR = "/image/";
 
-    /** Sudoku board. */
-    private SudokuBoard board;
-
-    /** Special panel to display a Sudoku board. */
+    /** Special panel to display a Sudoku board. Holds SudokuBoard object used for game model */
     private BoardPanel boardPanel;
-
-    private JPanel buttons;
 
     private boolean insertState = false;
     private boolean deleteState = false;
@@ -57,15 +43,32 @@ public class SudokuDialog extends JFrame {
     /** Create a new dialog of the given screen dimension. */
     public SudokuDialog(Dimension dim, int size) {
         super("Sudoku");
-//        setSize(dim);
+        URL url = this.getClass().getResource("/Assets/sudoku.png");
+        try {
+            BufferedImage img = ImageIO.read(url);
+            this.setIconImage(img);
+        }
+        catch (Exception ex) {
+            System.out.println("Set icon image failed");
+        }
+        //setSize(dim);
         this.setSize(new Dimension(450,470));
-        board = SudokuBoard.generateRandomBoard(size, 2);
-        boardPanel = new BoardPanel(board, this::boardClicked);
+        try {
+            boardPanel = new BoardPanel(SudokuBoard.generateRandomBoard(size, 2), this::boardClicked);
+        }
+        catch (InputMismatchException ex) {
+            System.out.println(ex);
+        }
+        finally {
+            System.out.println("Creating empty board");
+            boardPanel = new BoardPanel(new SudokuBoard(size), this::boardClicked);
+        }
+
         configureUI();
         setLocationRelativeTo(null);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setVisible(true);
-        //setResizable(false);
+        setResizable(false);
     }
 
     /**
@@ -76,8 +79,10 @@ public class SudokuDialog extends JFrame {
     private void boardClicked(int x, int y) {
         // WRITE YOUR CODE HERE ...
         //
-        if (!this.board.canAlterNumber(y, x)) {
-            showMessage(String.format("Can't Alter Number at row: %d col %d", y, x));
+        this.msgBar.setForeground(Color.BLACK);
+        if (!this.boardPanel.getBoard().canAlterNumber(y, x)) {
+            this.msgBar.setForeground(Color.RED);
+            showMessage(String.format("Can't Alter Number at row: %d col %d", y+1, x+1));
             System.out.printf("Can't Alter Number at Row: %d Col: %d\n", y, x);
             return;
         }
@@ -85,29 +90,29 @@ public class SudokuDialog extends JFrame {
             this.insertState = false;
             System.out.printf("Number %d will be inserted at row: %d col %d\n", savedNum, y, x);
 
-            if (this.board.insertNumber(savedNum, y, x)) {
-                showMessage(String.format("Inserted %d at row: %d col %d", savedNum, y, x));
+            if (this.boardPanel.getBoard().insertNumber(savedNum, y, x)) {
+                showMessage(String.format("Inserted %d at row: %d col %d", savedNum, y+1, x+1));
                 System.out.printf("Number %d finished inserting at row: %d col %d\n", savedNum, y, x);
                 this.repaint();
             }
-            else
-                showMessage(String.format("Error: Number Conflict"));
+            else {
+                this.msgBar.setForeground(Color.RED);
+                showMessage(String.format("There Is A Number Conflict!"));
+            }
 
-            if (this.board.numbersAdded == Math.pow(this.board.getSize(),2) && this.board.validateBoard()) {
+            if (this.boardPanel.getBoard().numbersAdded == Math.pow(this.boardPanel.getBoard().getSize(),2) && this.boardPanel.getBoard().validateBoard()) {
                 showMessage(String.format("Congratulations! You Solved This Puzzle!"));
-                JPanel wind = new JPanel();
-                wind.add(new JLabel("Congratulations! You Solved This Puzzle!"));
-                wind.setVisible(true);
+                showCongratWindow();
             }
         }
         else if (deleteState) {
             this.deleteState = false;
-            showMessage(String.format("Deleted number at row: %d col %d", y, x));
-            this.board.removeNumber(y, x);
+            showMessage(String.format("Deleted number at row: %d col %d", y+1, x+1));
+            this.boardPanel.getBoard().removeNumber(y, x);
             this.repaint();
         }
         else {
-            showMessage(String.format("Board clicked: x = %d, y = %d", x, y));
+            showMessage(String.format("Board clicked: x = %d, y = %d", x+1, y+1));
         }
     }
     
@@ -118,6 +123,7 @@ public class SudokuDialog extends JFrame {
     private void numberClicked(int number) {
         // WRITE YOUR CODE HERE ...
         //
+        this.msgBar.setForeground(Color.BLACK);
         if (number == 0) {
             showMessage("Press a square to delete a number");
             System.out.println("Entered delete mode");
@@ -143,9 +149,9 @@ public class SudokuDialog extends JFrame {
     private void newClicked(int size) {
         // WRITE YOUR CODE HERE ...
         //
-        showMessage("New clicked: " + size);
-        new SudokuDialog(DEFAULT_SIZE, size);
-        this.setVisible(false);
+        SudokuDialog newView = new SudokuDialog(DEFAULT_SIZE, size);
+        newView.showMessage("New clicked: " + size);
+        this.dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING));
         System.gc();
     }
 
@@ -174,7 +180,7 @@ public class SudokuDialog extends JFrame {
         JPanel numberButtons = new JPanel();
         numberButtons.setLayout(new BoxLayout(numberButtons, BoxLayout.PAGE_AXIS));
         numberButtons.setBorder(BorderFactory.createEmptyBorder(10,0,0,19));
-        int maxNumber = board.getSize() + 1;
+        int maxNumber = boardPanel.getBoard().getSize() + 1;
         for (int i = 1; i <= maxNumber; i++) {
             int number = i % maxNumber;
             JButton button = new JButton(number == 0 ? "X" : String.valueOf(number));
@@ -207,6 +213,25 @@ public class SudokuDialog extends JFrame {
     	content.setLayout(new BoxLayout(content, BoxLayout.PAGE_AXIS));
         content.add(newButtons);
         return content;
+    }
+
+    /**
+     * @author  Marco Soto
+     * Used to create dialog window to congratulate the player once the user finishes solving the given puzzle.
+     *
+     * @return  Window that congratulates the user when the puzzle is solved.
+     */
+    public static JFrame showCongratWindow() {
+        JFrame congrat_window = new JFrame("Congratulations");
+        congrat_window.setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        congrat_window.setSize(new Dimension(300,100));
+        congrat_window.setLocationRelativeTo(null);
+        congrat_window.setVisible(true);
+        congrat_window.setResizable(false);
+        JLabel congrats = new JLabel("Congratulations! You Solved This Puzzle!");
+        congrats.setBorder(BorderFactory.createEmptyBorder(20,10,0,20));
+        congrat_window.add(congrats);
+        return congrat_window;
     }
 
     /** Create an image icon from the given image file. */

@@ -1,11 +1,9 @@
-package sample;
+
 
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-
 import javax.swing.*;
-
 import Model.*;
 
 
@@ -54,7 +52,9 @@ public class BoardPanel extends JPanel {
     public void setBoard(SudokuBoard board) {
     	this.board = board;
     }
-    
+
+    public SudokuBoard getBoard() { return this.board; }
+
     /**
      * Given a screen coordinate, return the indexes of the corresponding square
      * or -1 if there is no square.
@@ -135,5 +135,4 @@ public class BoardPanel extends JPanel {
         }
 
     }
-
 }
