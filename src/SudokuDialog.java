@@ -52,16 +52,17 @@ public class SudokuDialog extends JFrame {
             System.out.println("Set icon image failed");
         }
         //setSize(dim);
-        this.setSize(new Dimension(450,470));
+        this.setSize(new Dimension(500,500));
         try {
-            boardPanel = new BoardPanel(SudokuBoard.generateRandomBoard(size, 2), this::boardClicked);
+            boardPanel = new BoardPanel(SudokuBoard.generateRandomBoardWithWebService(size, 2), this::boardClicked);
         }
         catch (InputMismatchException ex) {
             System.out.println(ex);
         }
         finally {
-            System.out.println("Creating empty board");
-            boardPanel = new BoardPanel(new SudokuBoard(size), this::boardClicked);
+            //System.out.println("Creating empty board");
+            //boardPanel = new BoardPanel(new SudokuBoard(size), this::boardClicked); // Creates Empty Board
+            boardPanel = new BoardPanel(SudokuBoard.randPopulateBoard(size), this::boardClicked);
         }
 
         configureUI();
@@ -209,9 +210,59 @@ public class SudokuDialog extends JFrame {
     	}
     	newButtons.setAlignmentX(LEFT_ALIGNMENT);
 
+        //TODO: Finish Menu items
+//        JMenu menu = new JMenu("Puzzle Options");
+//        JMenuItem[] menuItems = {new JMenuItem("Check Solution"), new JMenuItem("Solve Puzzle")};
+//        for (JMenuItem item: menuItems) menu.add(item);
+//        this.add(menu);
+
+        //TODO: Finish toolbar buttons
+        JToolBar toolbar = new JToolBar("Options");
+        JButton[] tbButtons = new JButton[3];
+        ImageIcon[] tbIcons = { // Create Button Icons
+                createImageIcon("checkmark.png"),
+                createImageIcon("key.png"),
+                createImageIcon("remove.png"),
+        };
+
+        //TODO: Add possible number display button
+        ImageIcon clearImage = createImageIcon("help.png");
+
+        for (int i = 0; i < tbButtons.length; i++) { //Create Toolbar buttons
+            tbIcons[i] = new ImageIcon(tbIcons[i].getImage().getScaledInstance( 40, 40,  java.awt.Image.SCALE_SMOOTH )); // Resize Images
+            tbButtons[i] = new JButton(tbIcons[i]); // Create toolbar buttons with images
+        }
+
+        for (JButton b: tbButtons) {
+            b.addActionListener(e -> {
+                if (((JButton)e.getSource()).equals(tbButtons[1])) {
+                    //TODO: Show sovler progress dialog box
+                    if (this.boardPanel.getBoard().solveBoard()) {
+                        repaint();
+                    }
+                    else {
+                        //TODO: Show solver failed dialog box
+                    }
+                }
+                else if (((JButton) e.getSource()).equals(tbButtons[2])) {
+                    this.boardPanel.getBoard().clearBoard();
+                    repaint();
+                }
+                else {
+                    System.out.println("Checking Board");
+                    //TODO: Implement check board solution
+                    //TODO: Show result dialog box
+                }
+            });
+            toolbar.add(b);
+        }
+        toolbar.createToolTip().setTipText("Solve Board or Check if board is solvable");
+
     	JPanel content = new JPanel();
     	content.setLayout(new BoxLayout(content, BoxLayout.PAGE_AXIS));
+//        content.add(menu);
         content.add(newButtons);
+        content.add(toolbar);
         return content;
     }
 
@@ -236,12 +287,12 @@ public class SudokuDialog extends JFrame {
 
     /** Create an image icon from the given image file. */
     private ImageIcon createImageIcon(String filename) {
-        URL imageUrl = getClass().getResource(IMAGE_DIR + filename);
-        if (imageUrl != null) {
+        URL imageUrl = getClass().getResource("/Assets/" + filename);
+        if (imageUrl != null)
             return new ImageIcon(imageUrl);
-        }
         return null;
     }
+
 
     public static void main(String[] args) {
         new SudokuDialog();

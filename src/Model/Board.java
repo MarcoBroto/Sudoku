@@ -8,6 +8,7 @@ package Model;
  *
  */
 public class Board {
+    //TODO: Make properties private
 	final int width;
 	final int height;
 	int[][] cells;
