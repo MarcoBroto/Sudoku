@@ -1,35 +1,80 @@
+/************************************************************************
+ * SudokuBoard.java                                                     *
+ * @author Created and Modified by Marco Soto                           *
+ * Sudoku game developed for UTEP CS 3331 Advanced OOP                  *
+ *                                                                      *
+ * This file provides the core model for the sudoku game application    *
+ * developed for CS 3331. Includes all functionality for running a      *
+ * standalone sudoku game. Requires Board.java superclass file.         *
+ ************************************************************************/
 
 package Model;
 
+import External.JavaClient;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
-import External.JavaClient;
 
-import java.util.*;
+import java.io.File;
+import java.io.FileWriter;
+import java.util.ArrayList;
+import java.util.InputMismatchException;
+import java.util.LinkedList;
+import java.util.Stack;
 
 /**
  * @author Marco Soto
- *
+ * //TODO: Documentation
  */
 public class SudokuBoard extends Board {
 
     private final int SIZE; // Side length of board
+    private final int SUBSQUARE_SIZE;
     private ArrayList<Cell> fixedNumbers = new ArrayList<>(); // Stores the unalterable cell locations received from json web service.
-    public int numbersAdded; // Stores the total number of numbers entered into the board; game finishes when numbersAdded = (board length)^2
+    private int numbersAdded; // Stores the total number of numbers entered into the board; game finishes when numbersAdded = (board length)^2
+    private LinkedList<Integer>[][] possibleNumbers = null;
+    private Stack<Move> undoList = new Stack<>();
+    private Stack<Move> redoList = new Stack<>();
+    private int[] numberOccurrences;
 
     public SudokuBoard(int boardSize) {
         super(isPerfectSquare(boardSize));
         this.SIZE = boardSize;
+        this.SUBSQUARE_SIZE = (int)Math.sqrt(SIZE);
+        this.numberOccurrences = new int[SIZE+1];
     }
 
     /**
+     * @author Marco Soto
+     * //TODO: Documentation
+     *
      * Getter for the side length of the sudoku board.
      * @return  Sudoku board side length.
      */
     public int getSize() {
-        if (super.height != super.width) throw new IllegalArgumentException("Invalid Board Dimensions");
-        return super.height;
+        if (super.getHeight() != super.getWidth()) throw new IllegalArgumentException("Invalid Board Dimensions");
+        return super.getHeight();
+    }
+
+    /**
+     * @author
+     * //TODO: Documentation
+     *
+     * Getter for array containing the occurrences of each number in the board.
+     * @return  Array containing number occurrences
+     */
+    public int getNumbersAdded() { return this.numbersAdded; };
+
+    /**
+     * @author Marco Soto
+     * //TODO: Documenation
+     *
+     * @param n
+     * @return
+     */
+    public int getNumberOccurrence(int n) {
+        if (n < 1 || n > SIZE) throw new IllegalArgumentException();
+        return this.numberOccurrences[n];
     }
 
     /**
@@ -56,8 +101,8 @@ public class SudokuBoard extends Board {
      * @return      True if the number already exists in the row, false otherwise.
      */
     private boolean isInRow(int number, int row, int column) {
-        for (int i = 0; i < this.cells[row].length; i++)
-            if (i != column && this.cells[row][i] == number) return true;
+        for (int i = 0; i < SIZE; i++)
+            if (i != column && this.getCell(row,i) == number) return true;
         return false;
     }
 
@@ -71,8 +116,8 @@ public class SudokuBoard extends Board {
      * @return      True if the number already exists in the column, false otherwise.
      */
     private boolean isInColumn(int number, int row, int column) {
-        for (int i = 0; i < this.cells.length; i++)
-            if (i != row && this.cells[i][column] == number) return true;
+        for (int i = 0; i < SIZE; i++)
+            if (i != row && this.getCell(i,column) == number) return true;
         return false;
     }
 
@@ -94,10 +139,26 @@ public class SudokuBoard extends Board {
                 int rowIndex = squareSize * (row/squareSize) + (i%squareSize);
                 int colIndex = squareSize * (column/squareSize) + (j%squareSize);
                 if (rowIndex == row && colIndex == column) continue; // Ignore square being compared to
-                else if (this.cells[rowIndex][colIndex] == number) return true;
+                else if (this.getCell(rowIndex,colIndex) == number) return true;
             }
         }
         return false;
+    }
+
+    /**
+     * @author Marco Soto
+     * //TODO: Documentation
+     *
+     * @param number
+     * @param row
+     * @param column
+     * @return
+     */
+    private boolean isValidInsert(int number, int row, int column) {
+        if (!canAlterNumber(row,column) || isInColumn(number,row,column) || isInRow(number,row,column) || isInSubsquare(number,row,column))
+            return false;
+        else
+            return true;
     }
 
     /**
@@ -113,16 +174,36 @@ public class SudokuBoard extends Board {
     public boolean insertNumber(int number, int row, int column) {
         if ((row > this.SIZE-1 || row < 0) || (column > this.SIZE-1 || column < 0))
             throw new IllegalArgumentException();
-        //row--; column--; // Normalize coordinates, use only if coordinates are not already normalized to 0 start index
-        if (isInColumn(number,row,column) ||
-                isInRow(number,row,column) ||
-                isInSubsquare(number,row,column)) {
-            return false;
+        if (number < 1) return false;
+        if (!isValidInsert(number,row,column)) return false;
+        int cellNum = this.getCell(row,column);
+        this.setCell(number, row, column);
+        this.numberOccurrences[number]++; // Increase inserted number occurrence
+        if (cellNum != 0) {
+            this.numberOccurrences[cellNum]--; // Decrease replaced number occurrence
+            return true; // Number replaces existing number, resulting in successful (true) insert; do not increment numbersAdded
         }
-        int cellNum = this.cells[row][column];
-        this.cells[row][column] = number;
-        if (cellNum != 0) return true; // Number replaces existing number
         this.numbersAdded++; // Increments only when number is inserted into empty cell.
+        return true;
+    }
+
+    /**
+     * @author Marco Soto
+     * //TODO: Documentation
+     *
+     * @param number
+     * @param row
+     * @param column
+     * @return
+     */
+    public boolean insertFixedNumber(int number, int row, int column) {
+        if ((row > this.SIZE-1 || row < 0) || (column > this.SIZE-1 || column < 0))
+            throw new IllegalArgumentException();
+        if (!isValidInsert(number,row,column)) return false;
+        this.setCell(number,row,column);
+        this.numberOccurrences[number]++;
+        fixedNumbers.add(new Cell(row,column));
+        this.numbersAdded++;
         return true;
     }
 
@@ -137,10 +218,10 @@ public class SudokuBoard extends Board {
     public boolean removeNumber(int row, int column) {
         if ((row > this.SIZE-1 || row < 0) || (column > this.SIZE-1 || column < 0)) throw new IllegalArgumentException();
         if (!canAlterNumber(row,column)) return false;
-        //row--; column--; // Normalize coordinates, use only if coordinates are not already normalized to 0 start index
-        int number = this.cells[row][column];
-        if (number < 1 || number > this.SIZE) return false; // Return false if cell is empty or number does not belong.
-        this.cells[row][column] = 0;
+        int cellNum = this.getCell(row,column);
+        if (cellNum < 1 || cellNum > this.SIZE) return false; // Return false if cell is empty or number does not belong.
+        this.numberOccurrences[cellNum]--; // Decrease removed number occurrence
+        this.setCell(0,row,column); // Reset cell value
         this.numbersAdded--; // Decrements only if an existing number was actually removed.
         return true;
     }
@@ -159,13 +240,13 @@ public class SudokuBoard extends Board {
         }
 
         for (int i = 0; i < dim; i++) {
-            if (dim != this.cells[i].length) {
+            if (dim != SIZE) {
                 System.out.println("Board dimensions are incompatible.");
                 return false;
             }
 
             for (int j = 0; j < dim; j++) {
-                int number = this.cells[i][j];
+                int number = this.getCell(i,j);
                 if (this.getCell(i,j) == 0) continue;
                 if (isInColumn(number, i, j) ||
                         isInRow(number, i, j) ||
@@ -179,6 +260,7 @@ public class SudokuBoard extends Board {
     }
 
     /**
+     * @author Marco Soto
      * //TODO: Documentation
      */
     public void printBoard() {
@@ -199,8 +281,8 @@ public class SudokuBoard extends Board {
                 if (j != 0 && j % Math.sqrt(this.getSize()) == 0 ) System.out.print("*"); //Print subsquare wall
                 else System.out.print("|"); //Print regular wall
 
-                if (this.cells[i][j] == 0) System.out.print("   ");
-                else System.out.printf(" %d ", this.cells[i][j]); //Print digit if present
+                if (this.getCell(i,j) == 0) System.out.print("   ");
+                else System.out.printf(" %d ", this.getCell(i,j)); //Print digit if present
             }
             System.out.print("|");
             System.out.println();
@@ -230,7 +312,7 @@ public class SudokuBoard extends Board {
         JSONTokener t = new JSONTokener(response);
         JSONObject json = new JSONObject(t);
         if (!json.getBoolean("response")) {
-            System.out.println(response);
+            System.out.println("Web Service JSON response: " + response);
             throw new InputMismatchException("Sudoku web service request failed.");
         }
         int size = json.getInt("size");
@@ -248,79 +330,50 @@ public class SudokuBoard extends Board {
         return SB;
     }
 
-
-    /**
-     * //TODO: Documentation
-     * @param boardSize
-     * @return
-     */
-    public static SudokuBoard randPopulateBoard(int boardSize) {
-        java.util.Random rand = new Random();
-        SudokuBoard board = new SudokuBoard(boardSize);
-        for (int i = 0; i < 20; i++) {
-            int row = rand.nextInt(boardSize);
-            int col = rand.nextInt(boardSize);
-            int num = rand.nextInt(boardSize+1);
-            if (board.insertNumber(num, row, col) && board.canAlterNumber(row, col))
-                board.fixedNumbers.add(new Cell(row,col));
-        }
-        return board;
-    }
-
-    /**
-     * //TODO: Documentation
-     */
-    public static SudokuBoard generateRandomBoard(int boardSize) {
-        //TODO: Implement random board generator algorithm
-        return new SudokuBoard(boardSize);
-    }
-
     /**
      * @author Marco Soto
      * //TODO: Documentation
+     *
      * @return Returns true if the board is solvable and inserts solved board numbers, and false if the board is not solvable.
      */
     public boolean solveBoard() {
-        //TODO: Optimize sudoku board solver
-        System.out.println("\nSolving Board");
+        System.out.println("Solving Board");
         if (!this.validateBoard()) {
             System.out.println("Solver Error(1): Board is not solvable.");
             return false;
         }
-        int numCells = (int)Math.pow(this.getSize(), 2);
-        LinkedList[][] grid = generatePossibleNumberGrid();
-        printNumberGrid(grid);
+        int numCells = this.getSize()*this.getSize();
+        this.clearBoard();
+        if (possibleNumbers == null) possibleNumbers = generatePossibleNumberGrid();
         Stack<Cell> cellAltered = new Stack<>();
-        int startNum = 1;
-        while (this.numbersAdded < numCells) { //TODO: Remove this loop (redundant)
-            for (int i = 0; i < this.getSize() && this.numbersAdded < numCells; i++) {
-                for (int j = 0; j < this.getSize() && this.numbersAdded < numCells; j++) {
-                    if (!this.canAlterNumber(i,j)) continue;
-                    boolean success = false;
-                    for (int ins = startNum; ins <= this.getSize(); ins++) {
-                        //System.out.println("Inserting " + ins + " at (" + i + ", " + j + ")");
-                        if (this.insertNumber(ins,i,j)) {
-                            //System.out.println("Insert Succeeded!");
-                            cellAltered.push(new Cell(i,j));
-                            startNum = 1;
-                            success = true;
-                            break;
-                        }
-                        //System.out.println("Insert Failed");
+        Stack<Integer> startNumStack = new Stack<>();
+        int startIndex = 0;
+        startNumStack.push(startIndex);
+        for (int i = 0; i < this.getSize() && this.numbersAdded < numCells; i++) {
+            for (int j = 0; j < this.getSize() && this.numbersAdded < numCells; j++) {
+                if (!this.canAlterNumber(i,j)) continue;
+                boolean success = false;
+                LinkedList<Integer> possibleNumbersCell = possibleNumbers[i][j];
+                for (int insert = startIndex; insert < possibleNumbersCell.size(); insert++) {
+                    if (this.insertNumber(possibleNumbersCell.get(insert),i,j)) {
+                        cellAltered.push(new Cell(i,j));
+                        startNumStack.push(insert);
+                        startIndex = 0;
+                        success = true;
+                        break;
                     }
-                    if (success) continue;
-                    if (cellAltered.isEmpty()) {
-                        System.out.println("Solver Error(2): Board is not solvable.");
-                        return false;
-                    }
-                    Cell top = cellAltered.pop();
-                    i = top.row;
-                    j = top.column-1;
-                    startNum = this.getCell(i,j+1)+1; // Start at next number
-                    this.removeNumber(top.row,top.column);
-                    //System.out.printf("\tStack popped, back to (%d, %d)\n", i, j+1);
-                    if (cellAltered.isEmpty()) System.out.println("\t\tStack is empty, at (" + i + ", " + j+1 + ")");
                 }
+                if (success) continue;
+                if (cellAltered.isEmpty()) {
+                    System.out.println("Solver Error(2): Board is not solvable.");
+                    return false;
+                }
+                Cell top = cellAltered.pop();
+                i = top.row;
+                j = top.column;
+                startIndex = startNumStack.pop()+1; // Start at next number
+                this.removeNumber(i,j);
+                j--;
             }
         }
         System.out.println("Puzzle Solved");
@@ -344,14 +397,16 @@ public class SudokuBoard extends Board {
     }
 
     /**
+     * @author Marco Soto
      * //TODO: Documentation
+     *
      * @return
      */
-    public LinkedList[][] generatePossibleNumberGrid() {
+    public LinkedList<Integer>[][] generatePossibleNumberGrid() {
         LinkedList[][] grid = new LinkedList[this.getSize()][this.getSize()];
         for (int i = 0; i < this.getSize(); i++) {
             for (int j = 0; j < this.getSize(); j++) {
-                grid[i][j] = new LinkedList<>();
+                grid[i][j] = new LinkedList<Integer>();
                 if (!this.canAlterNumber(i,j)) continue;
                 for (int num = 1; num <= this.getSize(); num++) {
                     if (!isInRow(num,i,j) && !isInColumn(num,i,j) && !isInSubsquare(num,i,j)) grid[i][j].addLast(num);
@@ -362,15 +417,69 @@ public class SudokuBoard extends Board {
     }
 
     /**
+     * @author Marco Soto
      * //TODO: Documentation
+     * //TODO: Test
+     *
+     * @param num
+     * @param row
+     * @param col
+     */
+    public void addToPossibleNumberGrid(int num, int row, int col) {
+        if (possibleNumbers == null) throw new IllegalArgumentException("Grid has not been initialized.");
+        LinkedList<Integer> cell;
+        for (int i = 0; i < this.getSize(); i++) {
+            if (isValidInsert(num, row, col)) {
+                cell = possibleNumbers[i][col]; // Add to row
+                int index = 0;
+                for (Integer n = cell.get(index); index < cell.size(); index++)
+                    if (n > num) cell.add(index,num);
+                cell = possibleNumbers[row][i]; // Add to column
+                index = 0;
+                for (Integer n = cell.get(index); index < cell.size(); index++)
+                    if (n > num) cell.add(index,num);
+                for (int j = 0; j < SUBSQUARE_SIZE; j++) {
+                    cell = possibleNumbers[j*(row/SUBSQUARE_SIZE)][(i/col)+(i%SUBSQUARE_SIZE)]; // Add to subsquare
+                    index = 0;
+                    for (Integer n = cell.get(index); index < cell.size(); index++)
+                        if (n > num) cell.add(index,num);
+                }
+            }
+        }
+    }
+
+    /**
+     * @author Marco Soto
+     * //TODO: Documentation
+     * //TODO: Test
+     *
+     * @param num
+     * @param row
+     * @param col
+     */
+    public void removeFromPossibleNumberGrid(int num, int row, int col) {
+        if (possibleNumbers == null) throw new IllegalArgumentException("Grid has not been initialized.");
+        for (int i = 0; i < this.getSize(); i++) {
+            possibleNumbers[i][col].remove(num); // Remove from row
+            possibleNumbers[row][i].remove(num); // Remove from column
+            for (int j = 0; j < SUBSQUARE_SIZE; j++) possibleNumbers[j*(row/SUBSQUARE_SIZE)][(i/col)+(i%SUBSQUARE_SIZE)].remove(num); // Remove from subsquare
+        }
+    }
+
+    /**
+     * @author Marco Soto
+     * //TODO: Documentation
+     *
      * @param grid
      */
     private static void printNumberGrid(LinkedList[][] grid) {
         for (int i = 0; i < grid.length; i++) {
             for (int j = 0; j < grid[i].length; j++) {
                 System.out.print("[ ");
-                while (!grid[i][j].isEmpty())
-                    System.out.print(grid[i][j].removeFirst() + ", ");
+                for (int k = 0; k < grid[i][j].size(); k++) {
+                    System.out.print(grid[i][j].get(k) + " ");
+                }
+
                 System.out.print("], ");
             }
             System.out.println();
@@ -378,26 +487,170 @@ public class SudokuBoard extends Board {
     }
 
     /**
+     * @author Marco Soto
      * TODO: Documentation
      */
     public void clearBoard() {
         System.out.println("Clearing Board");
         for (int i = 0; i < this.getSize(); i++) {
             for (int j = 0; j < this.getSize(); j++)
-                this.removeNumber(i,j);
+                this.removeNumber(i, j);
+        }
+        undoList = new Stack<>();
+        redoList = new Stack<>();
+    }
+
+    /**
+     * @author Marco Soto
+     * //TODO: Documentation
+     *
+     * @param fName
+     * @param SB
+     */
+    public static void writeBoardToFile(SudokuBoard SB, File fName) {
+        try {
+            FileWriter writer = new FileWriter(fName,true);
+            for (int i = 0; i < SB.getSize(); i++) {
+                StringBuilder row = new StringBuilder();
+                for (int j = 0; j < SB.getSize(); j++) {
+                    row.append(SB.getCell(i,j));
+                    row.append(" ");
+                }
+                row.append("\n");
+                writer.write(row.toString());
+            }
+            writer.close();
+        }
+        catch (java.io.IOException ex) {
+            System.out.println(ex);
         }
     }
+
+    /**
+     * @author Marco Soto
+     * //TODO: Documentation
+     *
+     * @param boardFile
+     * @return
+     */
+    public static ArrayList<SudokuBoard> readBoardListFile(File boardFile, int boardSize) {
+        ArrayList<SudokuBoard> readBoards = new ArrayList<>();
+        try {
+            java.util.Scanner input = new java.util.Scanner(boardFile);
+            while (input.hasNext()) {
+                SudokuBoard board = new SudokuBoard(boardSize);
+                for (int i = 0; i < boardSize; i++) {
+                    String row = input.nextLine();
+                    char[] row_chars = row.toCharArray();
+                    int column = 0;
+                    for (char row_char : row_chars) {
+                        if (row_char == ' ') continue;
+                        int num = row_char - '0';
+                        board.insertFixedNumber(num, i, column);
+                        column++;
+                    }
+                }
+                readBoards.add(board);
+            }
+            input.close();
+        }
+        catch (java.io.FileNotFoundException ex) {
+            System.out.println(ex);
+        }
+        return readBoards;
+    }
+
+    /**
+     * @author Marco Soto
+     * //TODO: DOcumentation
+     *
+     * @param SB
+     * @return
+     */
+    public static SudokuBoard copy(SudokuBoard SB) {
+        System.out.println("Copying Board");
+        SudokuBoard copy = new SudokuBoard(SB.getSize());
+        copy.redoList = (Stack)SB.redoList.clone();
+        copy.undoList = (Stack)SB.undoList.clone();
+        for (Cell c: SB.fixedNumbers) copy.insertFixedNumber(SB.getCell(c.row,c.column),c.row,c.column);
+        for (int i = 0; i < SB.getSize(); i++) {
+            for (int j = 0; j < SB.getSize(); j++)
+                copy.insertNumber(SB.getCell(i,j),i,j);
+        }
+        return copy;
+    }
+
+    /**
+     * @author Marco Soto
+     * //TODO: Documentation
+     * @return
+     */
+    public void redoMove() {
+        if (redoList.isEmpty()) return;
+        Move redo = redoList.pop();
+        Cell pos = redo.position;
+        if (redo.numberInserted == 0) removeNumber(pos.row, pos.column);
+        else insertNumber(redo.numberInserted, pos.row, pos.column);
+        undoList.push(redo);
+    }
+
+    /**
+     * @author Marco Soto
+     * //TODO: Documentation
+     *
+     * @return
+     */
+    public void undoMove() {
+        if (undoList.isEmpty()) return;
+        Move undo = undoList.pop();
+        Cell pos = undo.position;
+        if (undo.numberReplaced == 0) removeNumber(pos.row, pos.column);
+        else insertNumber(undo.numberReplaced, pos.row, pos.column);
+        redoList.push(undo);
+    }
+
+    /**
+     * @author Marco Soto
+     * //TODO: Documentation
+     *
+     * @param inserted
+     * @param replaced
+     * @param row
+     * @param column
+     */
+    public void rememberMove(int inserted, int replaced, int row, int column) {
+        Move move = new Move(inserted, new Cell(row,column), replaced);
+        undoList.push(move);
+        redoList = new Stack<>();
+    }
 }
+
 /**
  * @author Marco Soto
- * Used privately only for the purpose of storing locations of fixed numbers provided by the json web service.
+ * //TODO: Documentation
  */
 class Cell {
     final int row;
     final int column;
 
-    Cell(int row, int column) {
+    public Cell(int row, int column) {
         this.row = row;
         this.column = column;
+    }
+}
+
+/**
+ * @author Marco Soto
+ * //TODO: Documentation
+ */
+class Move {
+    int numberInserted;
+    int numberReplaced;
+    Cell position;
+
+    Move(int number, Cell position, int numberReplaced) {
+        this.numberInserted = number;
+        this.position = position;
+        this.numberReplaced = numberReplaced;
     }
 }
